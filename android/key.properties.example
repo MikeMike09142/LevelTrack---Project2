@@ -1,0 +1,8 @@
+## Copy this file to `android/key.properties` and update the values.
+## Generate a keystore (example command, edit names/passwords):
+## keytool -genkey -v -keystore C:\\path\\to\\my-release-key.jks -alias my-key-alias -keyalg RSA -keysize 2048 -validity 10000
+
+storeFile=C:\\path\\to\\my-release-key.jks
+storePassword=CHANGE_ME_STORE_PASSWORD
+keyAlias=my-key-alias
+keyPassword=CHANGE_ME_KEY_PASSWORD
