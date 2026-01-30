@@ -1,41 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 class IntroTutorialDialog extends StatelessWidget {
   const IntroTutorialDialog({super.key});
 
-  static Future<void> show(BuildContext context) async {
-    print('DEBUG: IntroTutorialDialog.show called');
+  static Future<void> show(BuildContext context, {bool force = false}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      print('DEBUG: SharedPreferences instance obtained');
-      
-      // Force reset for debugging if needed, but for now just read
-      // await prefs.setBool('has_seen_tutorial', false); 
+      final hasSeen = prefs.getBool('has_seen_tutorial') ?? false;
 
-      // Force show for testing
-      // final hasSeen = prefs.getBool('has_seen_tutorial') ?? false;
-      final hasSeen = false; 
-      print('DEBUG: has_seen_tutorial forced to $hasSeen');
-
-      if (!hasSeen) {
-        print('DEBUG: Showing dialog...');
+      if (!hasSeen || force) {
         if (context.mounted) {
           await showDialog(
             context: context,
             barrierDismissible: false,
             builder: (context) => const IntroTutorialDialog(),
           );
-          await prefs.setBool('has_seen_tutorial', true);
-          print('DEBUG: Tutorial marked as seen');
-        } else {
-          print('DEBUG: Context not mounted, skipping dialog');
+          // Mark as seen only if it wasn't already seen (or always mark it true)
+          if (!hasSeen) {
+            await prefs.setBool('has_seen_tutorial', true);
+          }
         }
-      } else {
-        print('DEBUG: Tutorial already seen, skipping');
       }
     } catch (e) {
-      print('DEBUG: Error checking tutorial status: $e');
+      // Fail silently in production
+      if (kDebugMode) {
+        print('Error checking tutorial status: $e');
+      }
     }
   }
 

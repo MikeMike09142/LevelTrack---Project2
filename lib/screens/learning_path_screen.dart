@@ -175,10 +175,10 @@ class _LearningPathScreenState extends State<LearningPathScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
-            tooltip: 'Show Tutorial (Debug)',
+            tooltip: 'Show Tutorial',
             onPressed: () {
-              print('DEBUG: Manual tutorial trigger');
-              IntroTutorialDialog.show(context);
+              // Manual trigger forces the dialog to show
+              IntroTutorialDialog.show(context, force: true);
             },
           ),
           IconButton(
