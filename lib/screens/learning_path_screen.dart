@@ -171,8 +171,16 @@ class _LearningPathScreenState extends State<LearningPathScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Learning Path'),
+        title: const Text('Learning Path (v2)'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'Show Tutorial (Debug)',
+            onPressed: () {
+              print('DEBUG: Manual tutorial trigger');
+              IntroTutorialDialog.show(context);
+            },
+          ),
           IconButton(
             tooltip: 'Store',
             icon: const Icon(Icons.store),

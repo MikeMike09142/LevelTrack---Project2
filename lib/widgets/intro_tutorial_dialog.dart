@@ -5,18 +5,37 @@ class IntroTutorialDialog extends StatelessWidget {
   const IntroTutorialDialog({super.key});
 
   static Future<void> show(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    final hasSeen = prefs.getBool('has_seen_tutorial') ?? false;
+    print('DEBUG: IntroTutorialDialog.show called');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      print('DEBUG: SharedPreferences instance obtained');
+      
+      // Force reset for debugging if needed, but for now just read
+      // await prefs.setBool('has_seen_tutorial', false); 
 
-    if (!hasSeen) {
-      if (context.mounted) {
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const IntroTutorialDialog(),
-        );
-        await prefs.setBool('has_seen_tutorial', true);
+      // Force show for testing
+      // final hasSeen = prefs.getBool('has_seen_tutorial') ?? false;
+      final hasSeen = false; 
+      print('DEBUG: has_seen_tutorial forced to $hasSeen');
+
+      if (!hasSeen) {
+        print('DEBUG: Showing dialog...');
+        if (context.mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const IntroTutorialDialog(),
+          );
+          await prefs.setBool('has_seen_tutorial', true);
+          print('DEBUG: Tutorial marked as seen');
+        } else {
+          print('DEBUG: Context not mounted, skipping dialog');
+        }
+      } else {
+        print('DEBUG: Tutorial already seen, skipping');
       }
+    } catch (e) {
+      print('DEBUG: Error checking tutorial status: $e');
     }
   }
 
