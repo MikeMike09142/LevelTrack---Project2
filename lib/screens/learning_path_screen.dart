@@ -8,10 +8,26 @@ import '../state/ads_service.dart';
 import 'store_screen.dart';
 import 'level_screen.dart';
 
-class LearningPathScreen extends StatelessWidget {
+import '../widgets/intro_tutorial_dialog.dart';
+
+class LearningPathScreen extends StatefulWidget {
   const LearningPathScreen({super.key});
 
+  @override
+  State<LearningPathScreen> createState() => _LearningPathScreenState();
+}
+
+class _LearningPathScreenState extends State<LearningPathScreen> {
   static int _lockPopupCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Schedule the tutorial check after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      IntroTutorialDialog.show(context);
+    });
+  }
 
   // Quick editor: paste a public image URL and save
   void _editImage(BuildContext context, Level level, int indexInList) async {
