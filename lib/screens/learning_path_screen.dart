@@ -174,7 +174,7 @@ class _LearningPathScreenState extends State<LearningPathScreen> {
         title: const Text('Learning Path (v2)'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.help_outline),
+            icon: const Icon(Icons.help_outline, size: 32),
             tooltip: 'Show Tutorial',
             onPressed: () {
               // Manual trigger forces the dialog to show
@@ -183,7 +183,7 @@ class _LearningPathScreenState extends State<LearningPathScreen> {
           ),
           IconButton(
             tooltip: 'Store',
-            icon: const Icon(Icons.store),
+            icon: const Icon(Icons.store, size: 32),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
