@@ -1,33 +1,18 @@
-import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'storage_stub.dart';
 
-class FileStorage implements Storage {
-  final Map<String, File> _files = {
-    'levels_json': File('lib/data/levels.json'),
-    'app_settings': File('lib/data/app_settings.json'),
-  };
-
+class SharedPreferencesStorage implements Storage {
   @override
   Future<String?> read({String key = 'levels_json'}) async {
-    final file = _files[key];
-    if (file == null) return null;
-    try {
-      if (await file.exists()) {
-        return await file.readAsString();
-      }
-    } catch (_) {}
-    return null;
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(key);
   }
 
   @override
   Future<void> write(String value, {String key = 'levels_json'}) async {
-    final file = _files[key];
-    if (file == null) return;
-    try {
-      await file.create(recursive: true);
-      await file.writeAsString(value);
-    } catch (_) {}
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, value);
   }
 }
 
-Storage getStorage() => FileStorage();
+Storage getStorage() => SharedPreferencesStorage();
