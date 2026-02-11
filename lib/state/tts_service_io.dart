@@ -28,7 +28,11 @@ class TtsService {
 
   Future<void> speakTextList(List<String> texts, {double rate = 0.9}) async {
     await _ensureInit();
-    await _tts.setSpeechRate(rate);
+    // On Android/iOS, 0.5 is typically "normal" speed, while 1.0 is very fast.
+    // The web and our app logic assume 1.0 is normal.
+    // So we scale the incoming rate by 0.5 to match mobile TTS expectations.
+    final double mobileRate = rate * 0.5;
+    await _tts.setSpeechRate(mobileRate);
     for (final t in texts) {
       final text = t.trim();
       if (text.isEmpty) continue;
