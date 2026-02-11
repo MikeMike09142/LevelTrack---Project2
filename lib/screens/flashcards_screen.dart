@@ -18,8 +18,8 @@ class FlashcardsScreen extends StatefulWidget {
 class _FlashcardsScreenState extends State<FlashcardsScreen> {
   // Session state
   List<int> _queue = [];
-  Set<int> _mastered = {};
-  Set<int> _mistakesHistory = {};
+  final Set<int> _mastered = {};
+  final Set<int> _mistakesHistory = {};
   bool _reviewingWrongOnly = false;
   bool showTranslation = false;
   bool finished = false;
@@ -103,21 +103,6 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
 
   Future<void> _finishLesson(int total) async {
     setState(() => finished = true);
-    // Compute XP and rank before completion
-    double _computeEarnedXp(List<Level> levels) {
-      double xp = 0;
-      for (final l in levels) {
-        final int W = l.items.length;
-        if (l.flashcardsCompleted) xp += W;
-        if (l.imageChoiceCompleted) xp += W * 0.5;
-        if (l.sentencesCompleted) xp += W * 0.5;
-      }
-      return xp;
-    }
-    final preLevels = List<Level>.from(AppState.instance.levels.value);
-    final double preXp = _computeEarnedXp(preLevels);
-    const int xpPerRank = 100;
-    final int preRank = preXp.floor() ~/ xpPerRank;
 
     // Mark section complete for this level
     AppState.instance.markSectionComplete(widget.level.number, 'flashcards');
@@ -129,45 +114,20 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
       levelNumber: widget.level.number,
     );
 
-    // Compute XP and rank after completion
-    final postLevels = List<Level>.from(AppState.instance.levels.value);
-    final double postXp = _computeEarnedXp(postLevels);
-    final int postRank = postXp.floor() ~/ xpPerRank;
-    final bool rankedUp = postRank > preRank;
-    const List<String> rankNames = [
-      'Explorador',
-      'Aprendiz',
-      'Descubridor',
-      'Iniciante',
-      'Continuador',
-      'Estudiante',
-      'Independiente',
-      'Progresivo',
-      'Comunicador',
-      'Experto Básico',
-      'Avanzando',
-      'Pre-Bilingüe',
-    ];
-    final int cappedRankIndex = postRank >= rankNames.length ? rankNames.length - 1 : postRank;
-    final String currentRankName = rankNames[cappedRankIndex];
-    final int currentRankNumber = cappedRankIndex + 1;
+    if (!mounted) return;
 
-    // Check if level completed (all sections done)
-    final latestIndex = postLevels.indexWhere((l) => l.number == widget.level.number);
-    final bool levelCompleted = latestIndex >= 0
-        ? (postLevels[latestIndex].flashcardsCompleted &&
-            postLevels[latestIndex].imageChoiceCompleted &&
-            postLevels[latestIndex].sentencesCompleted)
-        : false;
+    // Define messages based on what happened
+    String headline = '¡SECCIÓN COMPLETADA!';
+    String body = 'Has completado la sección de Flashcards.';
+    
+    // Level completion message removed as requested (handled by Rank Up celebration)
+
     await showCompletionSheet(
       context,
-      headline: rankedUp ? '¡FELICITACIONES! HAS SUBIDO DE NIVEL' : '¡FELICITACIONES!',
-      message:
-          (levelCompleted ? 'Nivel ${widget.level.number} completado.\n' : '') +
-          '¡Increíble! Has dominado ${_mastered.length} tarjetas.',
-      currentRankNumber: currentRankNumber,
-      currentRankName: currentRankName,
+      headline: headline,
+      message: '$body\n\nHas repasado ${_mastered.length} tarjetas.',
       accentColor: Color(widget.level.accentColor),
+      isLevelCompletion: false, // Treat as normal section completion
       onDone: () {
         Navigator.pop(context);
       },
@@ -186,8 +146,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
     final item = widget.level.items[currentIndex];
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Flashcards'),
-        actions: const [],
+        title: Text('Flashcards LEVEL ${widget.level.number}'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),

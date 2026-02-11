@@ -55,14 +55,14 @@ class TtsService {
   }
 
   String _buildSentence(VocabItem v) {
-    if ((v.sentenceAnswer ?? '').trim().isNotEmpty) {
-      return v.sentenceAnswer!;
+    if (v.sentenceAnswer.trim().isNotEmpty) {
+      return v.sentenceAnswer;
     }
-    if ((v.sentenceWithBlank ?? '').trim().isNotEmpty) {
-      return v.sentenceWithBlank!;
+    if (v.sentenceWithBlank.trim().isNotEmpty) {
+      return v.sentenceWithBlank;
     }
     final word = v.word.trim();
-    final tr = (v.translation ?? '').trim();
+    final tr = v.translation.trim();
     if (word.isEmpty && tr.isEmpty) return '';
     if (tr.isEmpty) return word;
     return '$word — $tr';

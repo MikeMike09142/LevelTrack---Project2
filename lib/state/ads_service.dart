@@ -82,6 +82,7 @@ class AdsService {
     // Admin mode removed; no bypass.
     if (kIsWeb) {
       // Simulate a short wait on web; do not block navigation with real ads
+      if (!context.mounted) return false;
       final ok = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -108,9 +109,11 @@ class AdsService {
     final ad = _rewardedAd;
     if (ad == null) {
       // Failed to load — inform user and do not unlock
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to load ad. ${_lastLoadError ?? 'Please try again.'}')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to load ad. ${_lastLoadError ?? 'Please try again.'}')),
+        );
+      }
       return false;
     }
 
@@ -157,6 +160,7 @@ class AdsService {
 
     if (kIsWeb) {
       // Inform user in web preview; real ads only on Android/iOS
+      if (!context.mounted) return;
       await showDialog<void>(
         context: context,
         barrierDismissible: true,
@@ -177,9 +181,11 @@ class AdsService {
     }
     final ad = _rewardedAd;
     if (ad == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to load ad. ${_lastLoadError ?? 'Please try again.'}')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to load ad. ${_lastLoadError ?? 'Please try again.'}')),
+        );
+      }
       return;
     }
 
@@ -192,18 +198,22 @@ class AdsService {
       onAdFailedToShowFullScreenContent: (_, error) {
         _rewardedAd?.dispose();
         _rewardedAd = null;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ad failed to show. ${error.message}')),
-        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ad failed to show. ${error.message}')),
+          );
+        }
       },
     );
 
     await ad.show(onUserEarnedReward: (_, reward) {
       // No unlock here; just acknowledge reward earning.
       final label = sectionName != null ? ' for $sectionName' : '';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Thanks for watching! Reward earned$label.')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Thanks for watching! Reward earned$label.')),
+        );
+      }
     });
   }
 }

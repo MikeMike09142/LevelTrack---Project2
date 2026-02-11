@@ -6,25 +6,41 @@ class IntroTutorialDialog extends StatelessWidget {
   const IntroTutorialDialog({super.key});
 
   static Future<void> show(BuildContext context, {bool force = false}) async {
+    // If forced (manual trigger), show immediately without waiting for prefs
+    if (force) {
+      if (context.mounted) {
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const IntroTutorialDialog(),
+        );
+        // Attempt to mark as seen after closing, just in case
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('has_seen_tutorial', true);
+        } catch (e) {
+          // Ignore storage errors
+        }
+      }
+      return;
+    }
+
+    // Automatic check logic
     try {
       final prefs = await SharedPreferences.getInstance();
       final hasSeen = prefs.getBool('has_seen_tutorial') ?? false;
 
-      if (!hasSeen || force) {
+      if (!hasSeen) {
         if (context.mounted) {
           await showDialog(
             context: context,
             barrierDismissible: false,
             builder: (context) => const IntroTutorialDialog(),
           );
-          // Mark as seen only if it wasn't already seen (or always mark it true)
-          if (!hasSeen) {
-            await prefs.setBool('has_seen_tutorial', true);
-          }
+          await prefs.setBool('has_seen_tutorial', true);
         }
       }
     } catch (e) {
-      // Fail silently in production
       if (kDebugMode) {
         print('Error checking tutorial status: $e');
       }

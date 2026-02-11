@@ -16,6 +16,18 @@ class AppState {
   // Observable flag for ads removal status
   final ValueNotifier<bool> areAdsRemoved = ValueNotifier<bool>(false);
 
+  // Economy & Inventory
+  final ValueNotifier<int> diamonds = ValueNotifier<int>(100); // Start with 100 for testing
+  final ValueNotifier<int> hints = ValueNotifier<int>(3);      // Start with 3 free hints
+  final ValueNotifier<List<String>> ownedThemes = ValueNotifier<List<String>>(['default']);
+  final ValueNotifier<String> currentThemeId = ValueNotifier<String>('default');
+
+  // Track the last rank seen by the user to trigger celebrations on the main screen
+  int lastSeenRank = 0;
+
+  // Track if the final app completion dialog has been shown
+  bool appCompletionShown = false;
+
   // Admin mode removed: app runs in standard user mode only.
 
   void updateLevel(int index, Level updated) {
@@ -34,6 +46,36 @@ class AppState {
       areAdsRemoved.value = true;
     }
     
+    // Load economy
+    final diamondsStr = await store.read(key: 'diamonds');
+    if (diamondsStr != null) diamonds.value = int.tryParse(diamondsStr) ?? 100;
+
+    final hintsStr = await store.read(key: 'hints');
+    if (hintsStr != null) hints.value = int.tryParse(hintsStr) ?? 3;
+
+    final ownedThemesStr = await store.read(key: 'owned_themes');
+    if (ownedThemesStr != null) {
+      try {
+        final List<dynamic> list = json.decode(ownedThemesStr);
+        ownedThemes.value = list.cast<String>();
+      } catch (_) {}
+    }
+
+    final currentThemeStr = await store.read(key: 'current_theme');
+    if (currentThemeStr != null) currentThemeId.value = currentThemeStr;
+
+    // Load last seen rank
+    final rankStr = await store.read(key: 'last_seen_rank');
+    if (rankStr != null) {
+      lastSeenRank = int.tryParse(rankStr) ?? 0;
+    }
+
+    // Load app completion status
+    final appCompStr = await store.read(key: 'app_completion_shown');
+    if (appCompStr != null && appCompStr.toLowerCase() == 'true') {
+      appCompletionShown = true;
+    }
+
     final jsonStr = await store.read();
     if (jsonStr != null && jsonStr.isNotEmpty) {
       try {
@@ -59,6 +101,72 @@ class AppState {
   Future<void> _saveAdsRemoved() async {
     final store = getStorage();
     await store.write(areAdsRemoved.value.toString(), key: 'app_settings');
+  }
+
+  // Economy Actions
+  Future<void> addDiamonds(int amount) async {
+    diamonds.value += amount;
+    await _saveEconomy();
+  }
+
+  Future<bool> spendDiamonds(int amount) async {
+    if (diamonds.value >= amount) {
+      diamonds.value -= amount;
+      await _saveEconomy();
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> addHint(int amount) async {
+    hints.value += amount;
+    await _saveEconomy();
+  }
+
+  Future<bool> useHint() async {
+    if (hints.value > 0) {
+      hints.value -= 1;
+      await _saveEconomy();
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> buyTheme(String themeId) async {
+    if (!ownedThemes.value.contains(themeId)) {
+      final newList = List<String>.from(ownedThemes.value)..add(themeId);
+      ownedThemes.value = newList;
+      await _saveEconomy();
+    }
+  }
+
+  Future<void> setTheme(String themeId) async {
+    if (ownedThemes.value.contains(themeId)) {
+      currentThemeId.value = themeId;
+      await _saveEconomy();
+    }
+  }
+
+  Future<void> _saveEconomy() async {
+    final store = getStorage();
+    await store.write(diamonds.value.toString(), key: 'diamonds');
+    await store.write(hints.value.toString(), key: 'hints');
+    await store.write(json.encode(ownedThemes.value), key: 'owned_themes');
+    await store.write(currentThemeId.value, key: 'current_theme');
+  }
+
+  // Update and save last seen rank
+  Future<void> setLastSeenRank(int rank) async {
+    lastSeenRank = rank;
+    final store = getStorage();
+    await store.write(rank.toString(), key: 'last_seen_rank');
+  }
+
+  // Update and save app completion status
+  Future<void> setAppCompletionShown(bool shown) async {
+    appCompletionShown = shown;
+    final store = getStorage();
+    await store.write(shown.toString(), key: 'app_completion_shown');
   }
 
   String exportJson() {
@@ -95,9 +203,9 @@ class AppState {
   // Admin utility: replace one level with the bundled sample version
   void replaceLevelFromSamples(int levelNumber) {
     final int idx = levels.value.indexWhere((l) => l.number == levelNumber);
-    final Level? sample = data.levels.firstWhere((l) => l.number == levelNumber, orElse: () => Level(
+    final Level sample = data.levels.firstWhere((l) => l.number == levelNumber, orElse: () => Level(
       title: 'Level $levelNumber', description: '', number: levelNumber, items: const [], accentColor: 0xFF7C4DFF));
-    if (idx >= 0 && sample != null) {
+    if (idx >= 0) {
       final copy = List<Level>.from(levels.value);
       final Level persisted = copy[idx];
       // Preserve user progress flags when replacing from samples.
@@ -109,6 +217,7 @@ class AppState {
         accentColor: sample.accentColor,
         imageUrl: sample.imageUrl,
         version: sample.version,
+        theory: sample.theory,
         flashcardsCompleted: persisted.flashcardsCompleted,
         imageChoiceCompleted: persisted.imageChoiceCompleted,
         sentencesCompleted: persisted.sentencesCompleted,
@@ -144,6 +253,7 @@ class AppState {
           accentColor: sampleLevel.accentColor,
           imageUrl: _normalizeImageUrl(persistedLevel.imageUrl ?? sampleLevel.imageUrl),
           version: sampleLevel.version,
+          theory: sampleLevel.theory,
           flashcardsCompleted: persistedLevel.flashcardsCompleted,
           imageChoiceCompleted: persistedLevel.imageChoiceCompleted,
           sentencesCompleted: persistedLevel.sentencesCompleted,
@@ -205,6 +315,7 @@ class AppState {
         accentColor: persistedLevel.accentColor,
         imageUrl: _normalizeImageUrl(persistedLevel.imageUrl),
         version: persistedLevel.version,
+        theory: sampleLevel.theory ?? persistedLevel.theory,
         flashcardsCompleted: persistedLevel.flashcardsCompleted,
         imageChoiceCompleted: persistedLevel.imageChoiceCompleted,
         sentencesCompleted: persistedLevel.sentencesCompleted,
@@ -245,6 +356,7 @@ class AppState {
               accentColor: lvl.accentColor,
               imageUrl: _normalizeImageUrl(lvl.imageUrl) ?? 'assets/images/levels/level${lvl.number}.png',
               version: lvl.version,
+              theory: lvl.theory,
               flashcardsCompleted: lvl.flashcardsCompleted,
               imageChoiceCompleted: lvl.imageChoiceCompleted,
               sentencesCompleted: lvl.sentencesCompleted,
@@ -263,17 +375,35 @@ class AppState {
     bool fc = l.flashcardsCompleted;
     bool ic = l.imageChoiceCompleted;
     bool sc = l.sentencesCompleted;
+    
+    // Reward logic: First time completion grants 20 diamonds
+    int reward = 0;
+
     switch (section) {
       case 'flashcards':
-        fc = true;
+        if (!fc) {
+            fc = true;
+            reward = 20;
+        }
         break;
       case 'image_choice':
-        ic = true;
+        if (!ic) {
+            ic = true;
+            reward = 20;
+        }
         break;
       case 'sentences':
-        sc = true;
+        if (!sc) {
+            sc = true;
+            reward = 20;
+        }
         break;
     }
+    
+    if (reward > 0) {
+        addDiamonds(reward);
+    }
+
     copy[idx] = Level(
       title: l.title,
       description: l.description,
@@ -282,6 +412,7 @@ class AppState {
       accentColor: l.accentColor,
       imageUrl: l.imageUrl,
       version: l.version,
+      theory: l.theory,
       flashcardsCompleted: fc,
       imageChoiceCompleted: ic,
       sentencesCompleted: sc,
@@ -306,6 +437,7 @@ class AppState {
       accentColor: l.accentColor,
       imageUrl: l.imageUrl,
       version: l.version,
+      theory: l.theory,
       flashcardsCompleted: l.flashcardsCompleted,
       imageChoiceCompleted: l.imageChoiceCompleted,
       sentencesCompleted: l.sentencesCompleted,

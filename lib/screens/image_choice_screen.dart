@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../state/tts_service.dart';
 import '../state/ads_service.dart';
 import '../widgets/completion_sheet.dart';
+import '../services/sound_service.dart';
 // Review available only from Level screen after all sections complete
 
 class ImageChoiceScreen extends StatefulWidget {
@@ -22,14 +23,17 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
   final rnd = Random();
   late List<VocabItem> _order;
   int _index = 0;
+  int _lives = 5;
   bool finished = false;
   bool _speaking = false;
   VocabItem? _selectedItem;
   bool _wasWrong = false;
+  final Set<VocabItem> _eliminated = {};
 
   @override
   void initState() {
     super.initState();
+    SoundService.instance.init();
     _startSession();
   }
 
@@ -37,6 +41,7 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
     _order = List<VocabItem>.from(widget.level.items);
     _order.shuffle(rnd);
     _index = 0;
+    _lives = 5;
     finished = _order.isEmpty;
     _prepareRound();
   }
@@ -44,21 +49,6 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
   Future<void> _prepareRound() async {
     if (_index >= _order.length) {
       setState(() => finished = true);
-      // Compute XP/rank before
-      double _computeEarnedXp(List<Level> levels) {
-        double xp = 0;
-        for (final l in levels) {
-          final int W = l.items.length;
-          if (l.flashcardsCompleted) xp += W;
-          if (l.imageChoiceCompleted) xp += W * 0.5;
-          if (l.sentencesCompleted) xp += W * 0.5;
-        }
-        return xp;
-      }
-      final preLevels = List<Level>.from(AppState.instance.levels.value);
-      final double preXp = _computeEarnedXp(preLevels);
-      const int xpPerRank = 100;
-      final int preRank = preXp.floor() ~/ xpPerRank;
 
       // Mark section complete for this level
       AppState.instance.markSectionComplete(widget.level.number, 'image_choice');
@@ -70,46 +60,20 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
         levelNumber: widget.level.number,
       );
 
-      // Compute XP/rank after
-      final postLevels = List<Level>.from(AppState.instance.levels.value);
-      final double postXp = _computeEarnedXp(postLevels);
-      final int postRank = postXp.floor() ~/ xpPerRank;
-      final bool rankedUp = postRank > preRank;
-      const List<String> rankNames = [
-        'Explorador',
-        'Aprendiz',
-        'Descubridor',
-        'Iniciante',
-        'Continuador',
-        'Estudiante',
-        'Independiente',
-        'Progresivo',
-        'Comunicador',
-        'Experto Básico',
-        'Avanzando',
-        'Pre-Bilingüe',
-      ];
-      final int cappedRankIndex = postRank >= rankNames.length ? rankNames.length - 1 : postRank;
-      final String currentRankName = rankNames[cappedRankIndex];
-      final int currentRankNumber = cappedRankIndex + 1;
+      if (!mounted) return;
 
-      // Level completion check
-      final latestIndex = postLevels.indexWhere((l) => l.number == widget.level.number);
-      final bool levelCompleted = latestIndex >= 0
-          ? (postLevels[latestIndex].flashcardsCompleted &&
-              postLevels[latestIndex].imageChoiceCompleted &&
-              postLevels[latestIndex].sentencesCompleted)
-          : false;
+      // Define messages based on what happened
+      String headline = '¡SECCIÓN COMPLETADA!';
+      String body = 'Has completado la sección de Imágenes.';
+      
+      // Level completion message removed as requested
 
       await showCompletionSheet(
         context,
-        headline: rankedUp ? '¡FELICITACIONES! HAS SUBIDO DE NIVEL' : '¡FELICITACIONES!',
-        message:
-            (levelCompleted ? 'Nivel ${widget.level.number} completado.\n' : '') +
-            'Has completado la sección de imágenes.',
-        currentRankNumber: currentRankNumber,
-        currentRankName: currentRankName,
+        headline: headline,
+        message: body,
         accentColor: Color(widget.level.accentColor),
+        isLevelCompletion: false, // Treat as normal section completion
         onDone: () {
           Navigator.of(context).pop();
         },
@@ -123,6 +87,7 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
     // Reset selection state for new round
     _selectedItem = null;
     _wasWrong = false;
+    _eliminated.clear();
     target = _order[_index];
     final others = List<VocabItem>.from(items)..remove(target);
     others.shuffle(rnd);
@@ -147,6 +112,33 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
     setState(() {});
   }
 
+  Future<void> _useHint() async {
+    if (_eliminated.isNotEmpty) return; // Already used hint
+    
+    // Find wrong options that are not yet eliminated (though _eliminated is empty initially)
+    final wrongOptions = options.where((o) => o != target).toList();
+    if (wrongOptions.isEmpty) return;
+    
+    final success = await AppState.instance.useHint();
+    if (!mounted) return;
+
+    if (success) {
+      wrongOptions.shuffle(rnd);
+      // Eliminate up to 2 wrong options
+      final toEliminate = wrongOptions.take(2);
+      setState(() {
+        _eliminated.addAll(toEliminate);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('¡Pista usada! Se han eliminado opciones incorrectas.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No tienes pistas. Cómpralas en la Tienda.')),
+      );
+    }
+  }
+
   void _select(VocabItem item) async {
     if (_speaking) return;
     final correct = item == target;
@@ -169,11 +161,57 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
       setState(() => _speaking = false);
       _index++;
       _prepareRound();
-    }
-    // No SnackBar for wrong answers - visual feedback is enough
-    
-    // Clear the wrong selection after a delay
-    if (!correct) {
+    } else {
+      // Wrong answer
+      SoundService.instance.playWrongSound();
+      setState(() {
+        _lives--;
+      });
+
+      if (_lives <= 0) {
+        // Game Over logic
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('¡Oh no!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.broken_image, size: 64, color: Colors.redAccent),
+                const SizedBox(height: 16),
+                const Text(
+                  'Te has quedado sin vidas. Debes reiniciar la sección.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close dialog
+                  Navigator.of(context).pop(); // Exit screen
+                },
+                child: const Text('SALIR', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close dialog
+                  setState(() {
+                    _startSession(); // Restart session
+                  });
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                child: const Text('REINTENTAR', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+      
+      // Clear the wrong selection after a delay if still alive
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) {
           setState(() {
@@ -187,10 +225,33 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (finished) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Image Choice'),
-        actions: const [],
+        title: Text(widget.level.title),
+        actions: [
+          Row(
+            children: List.generate(5, (index) {
+              return Icon(
+                index < _lives ? Icons.favorite : Icons.favorite_border,
+                color: Colors.redAccent,
+                size: 32,
+              );
+            }),
+          ),
+          const SizedBox(width: 12),
+          ValueListenableBuilder<int>(
+            valueListenable: AppState.instance.hints,
+            builder: (context, count, _) {
+              return TextButton.icon(
+                onPressed: finished || _eliminated.isNotEmpty ? null : _useHint,
+                icon: Icon(Icons.lightbulb, size: 32, color: (_eliminated.isNotEmpty) ? Colors.grey : Colors.yellowAccent),
+                label: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 20)),
+              );
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -212,6 +273,15 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
                   itemCount: options.length,
                   itemBuilder: (context, i) {
                     final opt = options[i];
+                    final bool isEliminated = _eliminated.contains(opt);
+                    
+                    if (isEliminated) {
+                      return const Card(
+                        color: Colors.transparent,
+                        elevation: 0,
+                      );
+                    }
+
                     final hasCustomEmoji = opt.emoji != null && opt.emoji!.isNotEmpty;
                     final emoji = hasCustomEmoji ? opt.emoji! : _emojiFor(opt.word);
                     final bool isSelected = _selectedItem == opt;
@@ -220,7 +290,7 @@ class _ImageChoiceScreenState extends State<ImageChoiceScreen> {
                     
                     return Card(
                       clipBehavior: Clip.antiAlias,
-                      color: isWrong ? Colors.red.withOpacity(0.1) : (isCorrectAnswer ? Colors.green.withOpacity(0.1) : null),
+                      color: isWrong ? Colors.red.withValues(alpha: 0.1) : (isCorrectAnswer ? Colors.green.withValues(alpha: 0.1) : null),
                       child: InkWell(
                         onTap: _speaking ? null : () => _select(opt),
                         child: Column(

@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kReleaseMode;
-import 'package:flutter/services.dart' show rootBundle;
-import 'dart:convert';
 import '../models/vocab.dart';
 import '../state/app_state.dart';
-import '../state/ads_service.dart';
 import 'store_screen.dart';
 import 'level_screen.dart';
 
 import '../widgets/intro_tutorial_dialog.dart';
+import '../widgets/completion_sheet.dart';
+import '../widgets/gradient_progress_bar.dart';
+import '../main.dart'; // for routeObserver
 
 class LearningPathScreen extends StatefulWidget {
   const LearningPathScreen({super.key});
@@ -17,8 +16,103 @@ class LearningPathScreen extends StatefulWidget {
   State<LearningPathScreen> createState() => _LearningPathScreenState();
 }
 
-class _LearningPathScreenState extends State<LearningPathScreen> {
+class _LearningPathScreenState extends State<LearningPathScreen> with RouteAware {
   static int _lockPopupCount = 0;
+  
+  // Rank system (15 ranks to match 15 levels)
+  static const List<String> rankNames = [
+    'Explorador',      // Lvl 1
+    'Aprendiz',        // Lvl 2
+    'Descubridor',     // Lvl 3
+    'Iniciante',       // Lvl 4
+    'Continuador',     // Lvl 5
+    'Estudiante',      // Lvl 6
+    'Independiente',   // Lvl 7
+    'Progresivo',      // Lvl 8
+    'Comunicador',     // Lvl 9
+    'Experto Básico',  // Lvl 10
+    'Avanzando',       // Lvl 11
+    'Pre-Bilingüe',    // Lvl 12
+    'Fluido',          // Lvl 13
+    'Experto',         // Lvl 14
+    'Maestro',         // Lvl 15
+  ];
+
+  // Rank accent palette (maps rank -> solid bar color)
+  static const List<Color> rankColors = [
+    Color(0xFF7C4DFF), // Explorador
+    Color(0xFF42A5F5), // Aprendiz
+    Color(0xFF1E88E5), // Descubridor
+    Color(0xFF1976D2), // Iniciante
+    Color(0xFF66BB6A), // Continuador
+    Color(0xFF43A047), // Estudiante
+    Color(0xFF2E7D32), // Independiente
+    Color(0xFF4CAF50), // Progresivo
+    Color(0xFF00C853), // Comunicador
+    Color(0xFF388E3C), // Experto Básico
+    Color(0xFF1B5E20), // Avanzando
+    Color(0xFF00E676), // Pre-Bilingüe
+    Color(0xFFFFD600), // Fluido (Gold)
+    Color(0xFFFFAB00), // Experto (Amber)
+    Color(0xFFFF6D00), // Maestro (Orange)
+  ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    // Called when the top route has been popped off, and the current route shows up.
+    _checkForRankUp();
+  }
+
+  void _checkForRankUp() {
+    final values = AppState.instance.levels.value;
+    int completedLevelsCount = 0;
+    for (final level in values) {
+       if (level.flashcardsCompleted && level.imageChoiceCompleted && level.sentencesCompleted) {
+         completedLevelsCount++;
+       }
+    }
+    
+    final int maxRanks = rankNames.length;
+    // Rank is capped at maxRanks - 1
+    int rankZeroBased = completedLevelsCount; 
+    if (rankZeroBased >= maxRanks) rankZeroBased = maxRanks - 1;
+
+    // Check for Rank Up Celebration
+    if (rankZeroBased > AppState.instance.lastSeenRank) {
+       final int newRank = rankZeroBased;
+       // We are already on the main screen, so we can show it immediately (or post frame)
+       WidgetsBinding.instance.addPostFrameCallback((_) {
+         if (newRank > AppState.instance.lastSeenRank) {
+           AppState.instance.setLastSeenRank(newRank);
+           _showRankCelebration(context, newRank);
+         }
+       });
+    }
+
+    // Check for Final App Completion (All 15 levels done)
+    // completedLevelsCount is derived from 'values' in _checkForRankUp scope?
+    // Wait, I need to recalculate completedLevelsCount here as it's local to build usually.
+    // Re-computing it here.
+    if (completedLevelsCount >= 15 && !AppState.instance.appCompletionShown) {
+       WidgetsBinding.instance.addPostFrameCallback((_) {
+         if (!AppState.instance.appCompletionShown) {
+           _showAppCompletionDialog(context);
+         }
+       });
+    }
+  }
 
   @override
   void initState() {
@@ -29,141 +123,97 @@ class _LearningPathScreenState extends State<LearningPathScreen> {
     });
   }
 
-  // Quick editor: paste a public image URL and save
-  void _editImage(BuildContext context, Level level, int indexInList) async {
-    // Show a clean asset path without the "asset:" prefix for easier editing
-    String initial = level.imageUrl ?? '';
-    if (initial.startsWith('asset:')) {
-      initial = initial.substring(6);
+  void _showRankCelebration(BuildContext context, int rankIndex) {
+    if (!mounted) return;
+    if (rankIndex < 0 || rankIndex >= rankNames.length) return;
+    
+    final String rankName = rankNames[rankIndex];
+    
+    // Use the accent color of the level corresponding to this rank (the "new level reached")
+    // Rank 0 -> Level 1, Rank 1 -> Level 2, etc.
+    final levels = AppState.instance.levels.value;
+    final Color accent;
+    if (rankIndex < levels.length) {
+      accent = Color(levels[rankIndex].accentColor);
+    } else {
+      // Fallback to rank palette or Amber
+      accent = (rankIndex < rankColors.length) ? rankColors[rankIndex] : Colors.amber;
     }
-    final ctl = TextEditingController(text: initial);
-    final String? result = await showDialog<String>(
+
+    showCompletionSheet(
+      context,
+      headline: '¡NUEVO RANGO ALCANZADO!',
+      message: '¡Felicidades! Ahora eres $rankName.',
+      accentColor: accent,
+      isLevelCompletion: true, // Trigger confetti and sound
+      // No onRestart provided, so only "CONTINUAR" button will show
+    );
+  }
+
+  void _showAppCompletionDialog(BuildContext context) {
+    // Mark as shown immediately so it doesn't loop if the user dismisses it
+    AppState.instance.setAppCompletionShown(true);
+
+    showDialog(
       context: context,
-      barrierDismissible: true,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Edit Image URL'),
-          content: TextField(
-            controller: ctl,
-            decoration: const InputDecoration(
-              hintText: 'Paste link or assets/images/levels/level1.png (.jpg/.jpeg)',
-            ),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.of(ctx).pop(ctl.text.trim()), child: const Text('Save')),
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.celebration, color: Colors.amber, size: 32),
+            SizedBox(width: 12),
+            Expanded(child: Text('¡Gracias por aprender con nosotros!', style: TextStyle(fontWeight: FontWeight.bold))),
           ],
-        );
-      },
-    );
-    if (result == null) return;
-    // Normalize: if it looks like a network URL keep it; otherwise save as plain asset path.
-    // Also strip any accidental leading "asset:" prefix the user might paste.
-    String trimmed = result.trim();
-    if (trimmed.startsWith('asset:')) {
-      trimmed = trimmed.substring(6);
-    }
-    final bool isWebLink = trimmed.startsWith('http://') || trimmed.startsWith('https://');
-    final String newUrl = isWebLink ? trimmed : trimmed;
-    final updated = Level(
-      title: level.title,
-      description: level.description,
-      number: level.number,
-      items: level.items,
-      accentColor: level.accentColor,
-      imageUrl: newUrl.isNotEmpty ? newUrl : null,
-      version: level.version,
-      flashcardsCompleted: level.flashcardsCompleted,
-      imageChoiceCompleted: level.imageChoiceCompleted,
-      sentencesCompleted: level.sentencesCompleted,
-      adUnlocked: level.adUnlocked,
-    );
-    AppState.instance.updateLevel(indexInList, updated);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Level image updated')),
-    );
-  }
-
-  // Build a CORS-friendly proxy URL for an external image.
-  String _proxyUrl(String original) {
-    try {
-      final u = Uri.parse(original);
-      final String pathWithQuery = u.path + (u.hasQuery ? '?${u.query}' : '');
-      final bool isHttps = u.scheme == 'https';
-      final String domainPart = '${isHttps ? 'ssl:' : ''}${u.host}$pathWithQuery';
-      final String enc = Uri.encodeComponent(domainPart);
-      return 'https://images.weserv.nl/?url=$enc';
-    } catch (_) {
-      // Last-resort placeholder
-      return 'https://picsum.photos/seed/fallback-level/120';
-    }
-  }
-
-  // Retry image using proxy and persist change
-  void _retryImageViaProxy(BuildContext context, Level level, int indexInList) {
-    final currentUrl = level.imageUrl;
-    if (currentUrl == null || currentUrl.isEmpty) return;
-    final proxied = _proxyUrl(currentUrl);
-    final updated = Level(
-      title: level.title,
-      description: level.description,
-      number: level.number,
-      items: level.items,
-      accentColor: level.accentColor,
-      imageUrl: proxied,
-      version: level.version,
-      flashcardsCompleted: level.flashcardsCompleted,
-      imageChoiceCompleted: level.imageChoiceCompleted,
-      sentencesCompleted: level.sentencesCompleted,
-      adUnlocked: level.adUnlocked,
-    );
-    AppState.instance.updateLevel(indexInList, updated);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Retrying image via proxy…')),
-    );
-  }
-
-  // Switch to the default asset path based on level number and persist
-  Future<String?> _findDefaultAssetForLevel(int number) async {
-    // Prefer existing asset among png, jpg, jpeg by checking the AssetManifest
-    final List<String> candidates = [
-      'assets/images/levels/level$number.png',
-      'assets/images/levels/level$number.jpg',
-      'assets/images/levels/level$number.jpeg',
-    ];
-    try {
-      final String manifestJson = await rootBundle.loadString('AssetManifest.json');
-      final Map<String, dynamic> manifest = json.decode(manifestJson) as Map<String, dynamic>;
-      for (final p in candidates) {
-        if (manifest.containsKey(p)) return p;
-      }
-    } catch (_) {
-      // Ignore errors and fall back
-    }
-    return null;
-  }
-
-  // Switch to the default asset path based on level number and persist
-  Future<void> _useDefaultAsset(BuildContext context, Level level, int indexInList) async {
-    final String assetPath = await _findDefaultAssetForLevel(level.number) ??
-        'assets/images/levels/level${level.number}.png';
-    final updated = Level(
-      title: level.title,
-      description: level.description,
-      number: level.number,
-      items: level.items,
-      accentColor: level.accentColor,
-      imageUrl: 'asset:$assetPath',
-      version: level.version,
-      flashcardsCompleted: level.flashcardsCompleted,
-      imageChoiceCompleted: level.imageChoiceCompleted,
-      sentencesCompleted: level.sentencesCompleted,
-      adUnlocked: level.adUnlocked,
-    );
-    AppState.instance.updateLevel(indexInList, updated);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Using asset: $assetPath')),
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '¡Has completado los 15 niveles!',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Muchas gracias por haber participado y usado nuestra aplicación. Esperamos que te haya sido de gran ayuda en tu camino de aprendizaje.',
+                style: TextStyle(fontSize: 16),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Si deseas apoyar el desarrollo de futuras actualizaciones o tienes sugerencias, por favor déjanos un comentario y calificación en la Play Store.',
+                style: TextStyle(fontSize: 16),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '¡Tu opinión es muy valiosa para nosotros!',
+                style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('CERRAR', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              // In a real app, this would launch the store URL.
+              // For now, we just close the dialog as we don't have the package 'url_launcher' or a real ID.
+              Navigator.of(ctx).pop();
+            },
+            icon: const Icon(Icons.star),
+            label: const Text('IR A PLAY STORE'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -171,19 +221,21 @@ class _LearningPathScreenState extends State<LearningPathScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Learning Path'),
+        toolbarHeight: 100, // Wider/bigger header
+        title: const Text(
+          'LevelUP English',
+          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.help_outline, size: 32),
-            tooltip: 'Show Tutorial',
-            onPressed: () {
-              // Manual trigger forces the dialog to show
-              IntroTutorialDialog.show(context, force: true);
-            },
+            tooltip: 'Tutorial',
+            icon: const Icon(Icons.help_outline, color: Colors.white, size: 28),
+            onPressed: () => IntroTutorialDialog.show(context, force: true),
           ),
+          const SizedBox(width: 8),
           IconButton(
-            tooltip: 'Store',
-            icon: const Icon(Icons.store, size: 32),
+            tooltip: 'Tienda',
+            icon: const Icon(Icons.diamond, color: Colors.amber, size: 28),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -192,155 +244,188 @@ class _LearningPathScreenState extends State<LearningPathScreen> {
               );
             },
           ),
+          const SizedBox(width: 16),
         ],
       ),
       body: ValueListenableBuilder<List<Level>>(
         valueListenable: AppState.instance.levels,
         builder: (context, values, _) {
-          // Compute global XP totals based on provided formula
+          // Compute global XP totals and Gradient Stops
           double totalXp = 0;
           double earnedXp = 0;
+          int totalWordsLearned = 0;
+          
+          List<Color> gradientColors = [];
+          List<double> gradientStops = [];
+          double currentXpAccumulator = 0;
+          
+          // Calculate total possible XP first to normalize stops
+          double grandTotalXp = 0;
+          for (final l in values) {
+            grandTotalXp += 2.0 * l.items.length;
+          }
+
           for (final level in values) {
             final int W = level.items.length;
-            totalXp += 2 * W; // W + 0.5W + 0.5W
+            final double levelMaxXp = 2.0 * W;
+            
+            // XP Stats
+            totalXp += levelMaxXp;
             if (level.flashcardsCompleted) earnedXp += W;
             if (level.imageChoiceCompleted) earnedXp += W * 0.5;
             if (level.sentencesCompleted) earnedXp += W * 0.5;
-          }
-          final double overallProgress = totalXp > 0 ? (earnedXp / totalXp).clamp(0.0, 1.0) : 0.0;
 
-          // Derive overall accent from the 15 level accent colors so the
-          // top bar matches the per-level palette progression.
+            if (level.flashcardsCompleted && level.imageChoiceCompleted && level.sentencesCompleted) {
+              totalWordsLearned += W;
+            }
+            
+            // Gradient Building (Hard stops for segmented look)
+            if (grandTotalXp > 0) {
+               final double start = currentXpAccumulator / grandTotalXp;
+               final double end = (currentXpAccumulator + levelMaxXp) / grandTotalXp;
+               final Color c = Color(level.accentColor);
+               
+               gradientColors.add(c);
+               gradientStops.add(start);
+               gradientColors.add(c);
+               gradientStops.add(end);
+               
+               currentXpAccumulator += levelMaxXp;
+            }
+          }
+          
+          final double overallProgress = totalXp > 0 ? (earnedXp / totalXp).clamp(0.0, 1.0) : 0.0;
+          
+          if (gradientColors.isEmpty) {
+             gradientColors = [Colors.grey, Colors.grey];
+             gradientStops = [0.0, 1.0];
+          }
+
+          // Derive overall accent for the swatch (current active level color)
           final List<Color> levelPalette = values.map((l) => Color(l.accentColor)).toList();
           final int paletteCount = levelPalette.length;
           int paletteIndex = 0;
           if (paletteCount > 0) {
-            paletteIndex = (overallProgress * paletteCount).floor();
-            if (paletteIndex >= paletteCount) paletteIndex = paletteCount - 1;
+            // Find which level we are currently traversing based on XP
+            // Reuse logic? Or just use the simple map
+            // The simple map assumes equal weight, which is WRONG if levels have different XP.
+            // Let's improve paletteIndex to reflect actual level.
+            double xpSearch = 0;
+            for (int i = 0; i < values.length; i++) {
+               final double lvlXp = 2.0 * values[i].items.length;
+               if (earnedXp < xpSearch + lvlXp) {
+                 paletteIndex = i;
+                 break;
+               }
+               xpSearch += lvlXp;
+               if (i == values.length - 1) paletteIndex = i; // Capped at last
+            }
           }
           final Color overallAccent = levelPalette.isNotEmpty ? levelPalette[paletteIndex] : Colors.cyan;
 
-          // Rank system (12 ranks, 100 XP per rank)
-          const List<String> rankNames = [
-            'Explorador',
-            'Aprendiz',
-            'Descubridor',
-            'Iniciante',
-            'Continuador',
-            'Estudiante',
-            'Independiente',
-            'Progresivo',
-            'Comunicador',
-            'Experto Básico',
-            'Avanzando',
-            'Pre-Bilingüe',
-          ];
-          // Rank accent palette (maps rank -> solid bar color)
-          const List<Color> rankColors = [
-            // Start on purple for Explorador
-            Color(0xFF7C4DFF), // Explorador (Deep Purple A200)
-            // Transition through blues
-            Color(0xFF42A5F5), // Aprendiz (Blue 400)
-            Color(0xFF1E88E5), // Descubridor (Blue 600)
-            Color(0xFF1976D2), // Iniciante (Blue 700)
-            // Then move into greens for higher ranks
-            Color(0xFF66BB6A), // Continuador (Green 400)
-            Color(0xFF43A047), // Estudiante (Green 600)
-            Color(0xFF2E7D32), // Independiente (Green 800)
-            Color(0xFF4CAF50), // Progresivo (Green 500)
-            Color(0xFF00C853), // Comunicador (Green A700)
-            Color(0xFF388E3C), // Experto Básico (Green 700)
-            Color(0xFF1B5E20), // Avanzando (Green 900)
-            Color(0xFF00E676), // Pre-Bilingüe (Green A400)
-          ];
-          const int xpPerRank = 100;
+          // Determine Rank based on HIGHEST UNLOCKED LEVEL (or levels completed).
+          // If user is on Level 3 (2 completed), they should be Rank 3 ("Descubridor").
+          // Rank index = number of fully completed levels.
+          // Example: 0 completed -> Rank 0 (Explorador) -> "1/15"
+          //          2 completed -> Rank 2 (Descubridor) -> "3/15"
+          int completedLevelsCount = 0;
+          for (final level in values) {
+             if (level.flashcardsCompleted && level.imageChoiceCompleted && level.sentencesCompleted) {
+               completedLevelsCount++;
+             }
+          }
+          
           final int maxRanks = rankNames.length;
-          final int earnedXpInt = earnedXp.floor();
-          int rankZeroBased = xpPerRank > 0 ? (earnedXpInt ~/ xpPerRank) : 0;
+          // Rank is capped at maxRanks - 1
+          int rankZeroBased = completedLevelsCount; 
           if (rankZeroBased >= maxRanks) rankZeroBased = maxRanks - 1;
+
+          // Check for Rank Up Celebration (ONLY if this route is current)
+          // Logic moved to didPopNext to prevent overlapping dialogs.
+          // We no longer check here in build() to avoid triggering while other screens are active.
+
+
           final String currentRankName = rankNames[rankZeroBased];
-          final int currentRankNumber = rankZeroBased + 1;
-          final Color rankAccent = rankColors[rankZeroBased];
+          // final Color rankAccent = rankColors[rankZeroBased]; // Unused
+
+          // Next rank XP logic is less relevant now, but we can keep it as "XP to next level"
+          // or just show total XP.
+          // Let's keep showing Total XP vs "Max Potential XP".
+          // Or just show "XP: <current>"
+
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: values.length + 1, // include header item
-        separatorBuilder: (_, __) => const SizedBox(height: 16),
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            // Global XP header
-            return Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white10),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.trending_up, color: Colors.white70),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Overall Progress',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${earnedXp.round()} / ${totalXp.round()} XP',
-                        style: const TextStyle(color: Colors.white70),
+            separatorBuilder: (context, index) => const SizedBox(height: 16),
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                // Header Card
+                return Container(
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white24, width: 1.5), // Subtle lighter border
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.military_tech, color: Colors.white70, size: 18),
-                      const SizedBox(width: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.trending_up, color: Colors.white70),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Tu Progreso',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.military_tech, color: Colors.white70, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Rango: $currentRankName',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          const SizedBox(width: 8),
+                          // Visual swatch to confirm the computed overall accent color
+                          Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: overallAccent,
+                              borderRadius: BorderRadius.circular(3),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
                       Text(
-                        'Rango: $currentRankName',
-                        style: const TextStyle(color: Colors.white70),
+                        'Palabras aprendidas: $totalWordsLearned  ·  XP Total: ${earnedXp.toInt()}',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12),
                       ),
-                      const SizedBox(width: 8),
-                      // Visual swatch to confirm the computed overall accent color
-                      Container(
-                        width: 14,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: overallAccent,
-                          borderRadius: BorderRadius.circular(3),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        'Rango $currentRankNumber / $maxRanks',
-                        style: const TextStyle(color: Colors.white54),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                      const SizedBox(height: 12),
                   Builder(builder: (context) {
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: LinearProgressIndicator(
-                        value: overallProgress,
-                        minHeight: 10,
-                        valueColor: AlwaysStoppedAnimation<Color>(overallAccent),
-                        backgroundColor: Colors.white24,
-                      ),
+                    return GradientProgressBar(
+                      value: overallProgress,
+                      height: 10,
+                      gradientColors: gradientColors,
+                      stops: gradientStops,
+                      fixedGradient: true,
+                      backgroundColor: Colors.white24,
                     );
                   }),
-                  if (!kReleaseMode) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Debug · rankIndex=$rankZeroBased · rankColor=#${rankAccent.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()} · overallIndex=$paletteIndex · overallColor=#${overallAccent.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
-                      style: const TextStyle(color: Colors.white38, fontSize: 12),
-                    ),
-                  ],
-                  // Removed the XP hint text per request.
                 ],
               ),
             );
@@ -377,103 +462,100 @@ class _LearningPathScreenState extends State<LearningPathScreen> {
                       );
                     }
                   },
-            onLongPress: !kReleaseMode && levelUnlocked ? () => _editImage(context, level, index - 1) : null,
+            onLongPress: null,
             child: Container(
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 96,
-                    margin: const EdgeInsets.only(left: 12, right: 8),
-                    decoration: BoxDecoration(
-                      color: accent.withOpacity(levelUnlocked ? 1.0 : 0.35),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                border: Border.all(color: Colors.white24, width: 1.5), // Subtle lighter border
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
                   ),
-                  const SizedBox(width: 8),
-                  if (level.imageUrl != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: ClipRRect(
+                ],
+              ),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      width: 6,
+                      margin: const EdgeInsets.only(left: 12, right: 8),
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: levelUnlocked ? 1.0 : 0.35),
                         borderRadius: BorderRadius.circular(12),
-                        child: Builder(builder: (context) {
-                          final String url = level.imageUrl!;
-                          // Accept both legacy 'asset:' prefixed and plain 'assets/...' paths
-                          final bool legacyPrefixed = url.startsWith('asset:');
-                          final String normalized = legacyPrefixed ? url.substring(6) : url;
-                          final bool isAsset = normalized.startsWith('assets/');
-                          if (isAsset) {
-                            final String assetPath = normalized;
-                            return Image.asset(
-                              assetPath,
-                              width: 72,
-                              height: 72,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stack) => Container(
-                                width: 72,
-                                height: 72,
-                                color: Colors.white10,
-                                alignment: Alignment.center,
-                                child: const Icon(Icons.broken_image, color: Colors.white54),
-                              ),
-                            );
-                          } else {
-                            return Image.network(
-                              url,
-                              width: 72,
-                              height: 72,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stack) => Container(
-                                width: 72,
-                                height: 72,
-                                color: Colors.white10,
-                                alignment: Alignment.center,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.image_not_supported, color: Colors.white54),
-                                    const SizedBox(height: 6),
-                                    TextButton(
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        minimumSize: const Size(0, 0),
-                                      ),
-                                      onPressed: () => _retryImageViaProxy(context, level, index - 1),
-                                      child: const Text('Try proxy', style: TextStyle(fontSize: 11)),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    TextButton(
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        minimumSize: const Size(0, 0),
-                                      ),
-                                      onPressed: () => _useDefaultAsset(context, level, index - 1),
-                                      child: const Text('Use asset', style: TextStyle(fontSize: 11)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }
-                        }),
                       ),
                     ),
-                  Expanded(
+                    const SizedBox(width: 8),
+                    if (level.imageUrl != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 0).copyWith(right: 12),
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.white, // Uniform white background
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Builder(builder: (context) {
+                                  final String url = level.imageUrl!;
+                                  // Accept both legacy 'asset:' prefixed and plain 'assets/...' paths
+                                  final bool legacyPrefixed = url.startsWith('asset:');
+                                  final String normalized = legacyPrefixed ? url.substring(6) : url;
+                                  final bool isAsset = normalized.startsWith('assets/');
+                                  if (isAsset) {
+                                    return Image.asset(
+                                      normalized,
+                                      fit: BoxFit.cover, // Fill the square uniformly
+                                      errorBuilder: (context, error, stack) => Container(
+                                        color: Colors.white10,
+                                        alignment: Alignment.center,
+                                        child: const Icon(Icons.broken_image, color: Colors.black54),
+                                      ),
+                                    );
+                                  } else {
+                                    return Image.network(
+                                      url,
+                                      fit: BoxFit.cover, // Fill the square uniformly
+                                      errorBuilder: (context, error, stack) => Container(
+                                        color: Colors.white10,
+                                        alignment: Alignment.center,
+                                        child: const Icon(Icons.image_not_supported, color: Colors.black54),
+                                      ),
+                                    );
+                                  }
+                                }),
+                                // Completed Overlay
+                                if (level.flashcardsCompleted && level.imageChoiceCompleted && level.sentencesCompleted)
+                                  Container(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    child: const Center(
+                                      child: Icon(Icons.check_circle, color: Colors.greenAccent, size: 32),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Level ${level.number}', style: const TextStyle(color: Colors.white70)),
+                          Text('Nivel ${level.number}', style: const TextStyle(color: Colors.white70)),
                           const SizedBox(height: 4),
                           Text(
                             level.title,
-                            style: Theme.of(context).textTheme.titleLarge,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                             softWrap: true,
                           ),
                           const SizedBox(height: 4),
@@ -501,53 +583,40 @@ class _LearningPathScreenState extends State<LearningPathScreen> {
                                 (level.imageChoiceCompleted ? 1 : 0) +
                                 (level.sentencesCompleted ? 1 : 0);
                             final double progress = completedSections / 3.0;
-                            return ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: LinearProgressIndicator(
-                                value: progress,
-                                minHeight: 8,
-                                valueColor: AlwaysStoppedAnimation<Color>(accent),
-                                backgroundColor: Colors.white24,
-                              ),
+                            final int percentage = (progress * 100).round();
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: LinearProgressIndicator(
+                                      value: progress,
+                                      minHeight: 8,
+                                      valueColor: AlwaysStoppedAnimation<Color>(accent),
+                                      backgroundColor: Colors.white24,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '$percentage%',
+                                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                ),
+                              ],
                             );
                           }),
-                          if (!kReleaseMode) ...[
-                            const SizedBox(height: 6),
-                            Builder(builder: (_) {
-                              // Show gating state for easier debugging
-                              bool prevFc = false, prevIc = false, prevSc = false;
-                              if (!isFirstLevel) {
-                                final int prevIdx = values.indexWhere((l) => l.number == (level.number - 1));
-                                if (prevIdx >= 0) {
-                                  final prev = values[prevIdx];
-                                  prevFc = prev.flashcardsCompleted;
-                                  prevIc = prev.imageChoiceCompleted;
-                                  prevSc = prev.sentencesCompleted;
-                                }
-                              }
-                              return Text(
-                                'Debug · unlocked=${levelUnlocked ? 'true' : 'false'} · prevDone=${prevCompleted ? 'true' : 'false'} · prevFlags=[FC:${prevFc ? '1' : '0'} IC:${prevIc ? '1' : '0'} SC:${prevSc ? '1' : '0'}]',
-                                style: const TextStyle(color: Colors.white38, fontSize: 11),
-                              );
-                            }),
-                          ],
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  if (!kReleaseMode && levelUnlocked)
-                    IconButton(
-                      tooltip: 'Edit Image',
-                      icon: const Icon(Icons.edit, color: Colors.white70, size: 20),
-                      onPressed: () => _editImage(context, level, index - 1),
-                    ),
                 ],
               ),
             ),
-          );
-        },
-      );
+          ),
+        );
+      },
+    );
         },
       ),
     );

@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.project2">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.leveltrack.app">
     <application
         android:label="LevelTrack"
         android:name="${applicationName}"
@@ -21,7 +21,7 @@
         </activity>
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-4045532377926053~5130856334" />
     </application>
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="com.android.vending.BILLING" />

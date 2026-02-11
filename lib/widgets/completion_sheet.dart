@@ -1,33 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:confetti/confetti.dart';
 import 'package:just_audio/just_audio.dart' as just_audio;
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:audioplayers/audioplayers.dart' as audio_players;
-import 'gradient_progress_bar.dart';
 import 'web_audio_player.dart';
 
 Future<void> showCompletionSheet(
   BuildContext context, {
   required String headline,
   required String message,
-  required int currentRankNumber,
-  required String currentRankName,
   required Color accentColor,
   VoidCallback? onDone,
   VoidCallback? onRestart,
-  bool showRank = true,
+  bool isLevelCompletion = false,
 }) async {
   return showDialog<void>(
     context: context,
     builder: (ctx) => _CompletionDialog(
       headline: headline,
       message: message,
-      currentRankNumber: currentRankNumber,
-      currentRankName: currentRankName,
       accentColor: accentColor,
       onDone: onDone,
       onRestart: onRestart,
-      showRank: showRank,
+      isLevelCompletion: isLevelCompletion,
     ),
   );
 }
@@ -36,22 +31,18 @@ class _CompletionDialog extends StatefulWidget {
   const _CompletionDialog({
     required this.headline,
     required this.message,
-    required this.currentRankNumber,
-    required this.currentRankName,
     required this.accentColor,
     this.onDone,
     this.onRestart,
-    this.showRank = true,
+    this.isLevelCompletion = false,
   });
 
   final String headline;
   final String message;
-  final int currentRankNumber;
-  final String currentRankName;
   final Color accentColor;
   final VoidCallback? onDone;
   final VoidCallback? onRestart;
-  final bool showRank;
+  final bool isLevelCompletion;
 
   @override
   State<_CompletionDialog> createState() => _CompletionDialogState();
@@ -60,12 +51,21 @@ class _CompletionDialog extends StatefulWidget {
 class _CompletionDialogState extends State<_CompletionDialog> {
   late final just_audio.AudioPlayer _player;
   WebAudioPlayer? _nativeWebPlayer; // Native web audio player
+  late ConfettiController _confettiController;
 
   @override
   void initState() {
     super.initState();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 3));
+    if (widget.isLevelCompletion) {
+      _confettiController.play();
+    }
     _player = just_audio.AudioPlayer();
-    _initAudio();
+    _initAudio().then((_) {
+      if (widget.isLevelCompletion && mounted) {
+        _playSoundOnInteraction();
+      }
+    });
   }
 
   Future<void> _initAudio() async {
@@ -73,11 +73,9 @@ class _CompletionDialogState extends State<_CompletionDialog> {
       // Use native web audio player
       _nativeWebPlayer = WebAudioPlayer();
       try {
-        print('Pre-loading audio asset for web using native WebAudioPlayer...');
         await _nativeWebPlayer!.load('assets/assets/audio/congratulations.mp3');
-        print('Audio asset pre-loaded successfully for web.');
       } catch (e) {
-        print('FATAL: Could not load audio asset for web: $e');
+        // Silent failure in production
       }
     } else {
       // Keep the robust audio session logic for mobile
@@ -86,7 +84,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
       try {
         await _player.setAsset('assets/audio/congratulations.mp3');
       } catch (e) {
-        print('FATAL: Could not load audio asset: $e');
+        // Silent failure in production
       }
     }
   }
@@ -103,7 +101,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
         await _player.play();
       }
     } catch (e) {
-      print('Error playing sound on interaction: $e');
+      // Silent failure in production
     }
   }
 
@@ -111,6 +109,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
   void dispose() {
     _player.dispose();
     _nativeWebPlayer?.dispose(); // Dispose native web player if it exists
+    _confettiController.dispose();
     super.dispose();
   }
 
@@ -118,38 +117,41 @@ class _CompletionDialogState extends State<_CompletionDialog> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final gradientColors = [
-      widget.accentColor.withOpacity(0.95),
-      scheme.primary.withOpacity(0.9),
+      widget.accentColor.withValues(alpha: 0.95),
+      scheme.primary.withValues(alpha: 0.9),
     ];
     return Dialog(
       insetPadding: EdgeInsets.zero,
-      child: SizedBox(
-        width: double.infinity,
-        height: double.infinity,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: gradientColors,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight - 48, // Subtract padding
-                    ),
-                    child: IntrinsicHeight(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const Spacer(),
-                          const Icon(Icons.emoji_events, color: Colors.amber, size: 64),
+      child: Stack(
+        alignment: Alignment.topCenter,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: double.infinity,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: gradientColors,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight - 48, // Subtract padding
+                        ),
+                        child: IntrinsicHeight(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Spacer(),
+                              const Icon(Icons.emoji_events, color: Colors.amber, size: 64),
                           const SizedBox(height: 24),
                           FittedBox(
                             fit: BoxFit.scaleDown,
@@ -163,36 +165,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                             ),
                           ),
                           const SizedBox(height: 24),
-                          if (widget.showRank) ...[
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  'Rango ${widget.currentRankNumber} / 12 · ${widget.currentRankName}',
-                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              child: GradientProgressBar(
-                                value: widget.currentRankNumber / 12.0,
-                                height: 12,
-                                borderRadius: BorderRadius.circular(12),
-                                gradientColors: [
-                                  widget.accentColor,
-                                  widget.accentColor,
-                                ],
-                                backgroundColor: Colors.white24,
-                              ),
-                            ),
-                          ],
+                          // Rank display removed per user request
                           const SizedBox(height: 24),
                           Text(
                             widget.message,
@@ -205,14 +178,16 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               ElevatedButton(
-                                onPressed: () async {
-                                  // Play sound when user clicks (this should work on web)
-                                  await _playSoundOnInteraction();
-                                  if (mounted) {
-                                    Navigator.pop(context);
-                                    widget.onDone?.call();
+                              onPressed: () async {
+                                if (mounted) {
+                                  // Close the dialog first
+                                  Navigator.of(context).pop();
+                                  // Then execute the callback if provided
+                                  if (widget.onDone != null) {
+                                    widget.onDone!();
                                   }
-                                },
+                                }
+                              },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(vertical: 20),
@@ -239,6 +214,14 @@ class _CompletionDialogState extends State<_CompletionDialog> {
           ),
         ),
       ),
-    );
-  }
+      if (widget.isLevelCompletion)
+        ConfettiWidget(
+          confettiController: _confettiController,
+          blastDirectionality: BlastDirectionality.explosive,
+          shouldLoop: false,
+          colors: const [Colors.green, Colors.blue, Colors.pink, Colors.orange, Colors.purple],
+        ),
+    ],
+  ),
+);}
 }

@@ -72,7 +72,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
               color: scheme.onSecondaryContainer,
             );
             final sentenceStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: scheme.onSecondaryContainer.withOpacity(0.9),
+              color: scheme.onSecondaryContainer.withValues(alpha: 0.9),
             );
             return Card(
               color: scheme.secondaryContainer,

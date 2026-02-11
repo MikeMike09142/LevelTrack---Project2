@@ -1,4 +1,4 @@
-package com.example.project2
+package com.leveltrack.app
 
 import io.flutter.embedding.android.FlutterActivity
 

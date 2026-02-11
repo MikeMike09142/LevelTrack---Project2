@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../state/tts_service.dart';
 import '../state/ads_service.dart';
 import '../widgets/completion_sheet.dart';
+import '../services/sound_service.dart';
 // Review available only from Level screen after all sections complete
 
 class SentenceFillScreen extends StatefulWidget {
@@ -23,14 +24,16 @@ class _SentenceFillScreenState extends State<SentenceFillScreen> {
   String? selected;
   late List<VocabItem> _order;
   int _index = 0;
+  int _lives = 5;
   bool finished = false;
   bool _speaking = false;
+  bool _hintUsed = false;
   
   void _showTranslation() {
     final String text;
     final vt = current.sentenceTranslationWithBlank;
     final sentenceEn = current.sentenceWithBlank;
-    final word = current.word.trim();
+    // final word = current.word.trim(); // Unused
     final tr = current.translation.trim();
     final levelNum = widget.level.number;
     if (vt != null && vt.trim().isNotEmpty) {
@@ -60,6 +63,7 @@ class _SentenceFillScreenState extends State<SentenceFillScreen> {
   @override
   void initState() {
     super.initState();
+    SoundService.instance.init();
     _startSession();
   }
 
@@ -70,6 +74,7 @@ class _SentenceFillScreenState extends State<SentenceFillScreen> {
         .toList();
     _order.shuffle(rnd);
     _index = 0;
+    _lives = 5;
     finished = _order.isEmpty;
     _prepareRound();
   }
@@ -77,21 +82,6 @@ class _SentenceFillScreenState extends State<SentenceFillScreen> {
   Future<void> _prepareRound() async {
     if (_index >= _order.length) {
       setState(() => finished = true);
-      // Compute XP/rank before
-      double _computeEarnedXp(List<Level> levels) {
-        double xp = 0;
-        for (final l in levels) {
-          final int W = l.items.length;
-          if (l.flashcardsCompleted) xp += W;
-          if (l.imageChoiceCompleted) xp += W * 0.5;
-          if (l.sentencesCompleted) xp += W * 0.5;
-        }
-        return xp;
-      }
-      final preLevels = List<Level>.from(AppState.instance.levels.value);
-      final double preXp = _computeEarnedXp(preLevels);
-      const int xpPerRank = 100;
-      final int preRank = preXp.floor() ~/ xpPerRank;
 
       // Mark section complete for this level
       AppState.instance.markSectionComplete(widget.level.number, 'sentences');
@@ -103,67 +93,60 @@ class _SentenceFillScreenState extends State<SentenceFillScreen> {
         levelNumber: widget.level.number,
       );
 
-      // Compute XP/rank after
-      final postLevels = List<Level>.from(AppState.instance.levels.value);
-      final double postXp = _computeEarnedXp(postLevels);
-      final int postRank = postXp.floor() ~/ xpPerRank;
-      final bool rankedUp = postRank > preRank;
-      const List<String> rankNames = [
-        'Explorador',
-        'Aprendiz',
-        'Descubridor',
-        'Iniciante',
-        'Continuador',
-        'Estudiante',
-        'Independiente',
-        'Progresivo',
-        'Comunicador',
-        'Experto Básico',
-        'Avanzando',
-        'Pre-Bilingüe',
-      ];
-      final int cappedRankIndex = postRank >= rankNames.length ? rankNames.length - 1 : postRank;
-      final String currentRankName = rankNames[cappedRankIndex];
-      final int currentRankNumber = cappedRankIndex + 1;
+      if (!mounted) return;
 
-      // Level completion check
-      final latestIndex = postLevels.indexWhere((l) => l.number == widget.level.number);
-      final bool levelCompleted = latestIndex >= 0
-          ? (postLevels[latestIndex].flashcardsCompleted &&
-              postLevels[latestIndex].imageChoiceCompleted &&
-              postLevels[latestIndex].sentencesCompleted)
-          : false;
+      // Define messages based on what happened
+    String headline = '¡SECCIÓN COMPLETADA!';
+    String body = 'Has completado la sección de Oraciones.';
+    
+    // Level completion message removed as requested
 
-      await showCompletionSheet(
-        context,
-        headline: rankedUp ? '¡FELICITACIONES! HAS SUBIDO DE NIVEL' : '¡FELICITACIONES!',
-        message:
-            (levelCompleted ? 'Nivel ${widget.level.number} completado.\n' : '') +
-            'Has completado la sección de oraciones.',
-        currentRankNumber: currentRankNumber,
-        currentRankName: currentRankName,
-        accentColor: Color(widget.level.accentColor),
-        onDone: () {
-          Navigator.of(context).pop();
-        },
-        onRestart: () {
-          _startSession();
-        },
+    await showCompletionSheet(
+      context,
+      headline: headline,
+      message: body,
+      accentColor: Color(widget.level.accentColor),
+      isLevelCompletion: false, // Treat as normal section completion
+      onDone: () {
+        Navigator.of(context).pop();
+      },
+      onRestart: () {
+        _startSession();
+      },
+    );
+    return;
+  }
+  final items = widget.level.items;
+  current = _order[_index];
+  final others = List<VocabItem>.from(items)..remove(current);
+  others.shuffle(rnd);
+  final distractors = others.take(3).map((e) => e.sentenceAnswer).toList();
+  options = [current.sentenceAnswer, ...distractors];
+  options.shuffle(rnd);
+  selected = null;
+  _hintUsed = false;
+  setState(() {});
+}
+
+Future<void> _useHint() async {
+    if (_hintUsed) return;
+    final success = await AppState.instance.useHint();
+    if (!mounted) return;
+    if (success) {
+      setState(() {
+        _hintUsed = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('¡Pista usada! La respuesta correcta está resaltada.')),
       );
-      return;
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No tienes pistas. Cómpralas en la Tienda.')),
+      );
     }
-    final items = widget.level.items;
-    current = _order[_index];
-    final others = List<VocabItem>.from(items)..remove(current);
-    others.shuffle(rnd);
-    final distractors = others.take(3).map((e) => e.sentenceAnswer).toList();
-    options = [current.sentenceAnswer, ...distractors];
-    options.shuffle(rnd);
-    selected = null;
-    setState(() {});
   }
 
-  void _select(String answer) async {
+void _select(String answer) async {
     if (_speaking) return;
     setState(() => selected = answer);
     final correct = answer.toLowerCase() == current.sentenceAnswer.toLowerCase();
@@ -182,11 +165,57 @@ class _SentenceFillScreenState extends State<SentenceFillScreen> {
       setState(() => _speaking = false);
       _index++;
       _prepareRound();
-    }
-    // No SnackBar for wrong answers - visual feedback is enough
-    
-    // Clear the wrong selection after a delay
-    if (!correct) {
+    } else {
+      // Wrong answer
+      SoundService.instance.playWrongSound();
+      setState(() {
+        _lives--;
+      });
+
+      if (_lives <= 0) {
+        // Game Over logic
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('¡Oh no!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.broken_image, size: 64, color: Colors.redAccent),
+                const SizedBox(height: 16),
+                const Text(
+                  'Te has quedado sin vidas. Debes reiniciar la sección.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close dialog
+                  Navigator.of(context).pop(); // Exit screen
+                },
+                child: const Text('SALIR', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close dialog
+                  setState(() {
+                    _startSession(); // Restart session
+                  });
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                child: const Text('REINTENTAR', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+      
+      // Clear the wrong selection after a delay if still alive
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) {
           setState(() {
@@ -208,7 +237,28 @@ class _SentenceFillScreenState extends State<SentenceFillScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sentence Fill'),
-        actions: const [],
+        actions: [
+          Row(
+            children: List.generate(5, (index) {
+              return Icon(
+                index < _lives ? Icons.favorite : Icons.favorite_border,
+                color: Colors.redAccent,
+                size: 32,
+              );
+            }),
+          ),
+          const SizedBox(width: 12),
+          ValueListenableBuilder<int>(
+            valueListenable: AppState.instance.hints,
+            builder: (context, count, _) {
+              return TextButton.icon(
+                onPressed: finished ? null : _useHint,
+                icon: Icon(Icons.lightbulb, size: 32, color: _hintUsed ? Colors.grey : Colors.yellowAccent),
+                label: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 20)),
+              );
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -253,6 +303,7 @@ class _SentenceFillScreenState extends State<SentenceFillScreen> {
                         final bool isSelected = selected == opt;
                         final bool isCorrect = opt.toLowerCase() == current.sentenceAnswer.toLowerCase();
                         final bool isWrong = isSelected && !isCorrect;
+                        final bool showHint = _hintUsed && isCorrect;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: SizedBox(
@@ -265,7 +316,8 @@ class _SentenceFillScreenState extends State<SentenceFillScreen> {
                                 padding: const EdgeInsets.symmetric(vertical: 24),
                                 backgroundColor: isSelected
                                     ? (isWrong ? Colors.redAccent : Theme.of(context).colorScheme.primary)
-                                    : null,
+                                    : (showHint ? Colors.green.withValues(alpha: 0.3) : null),
+                                side: showHint ? const BorderSide(color: Colors.green, width: 2) : null,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),

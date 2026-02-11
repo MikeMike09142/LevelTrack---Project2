@@ -16,7 +16,6 @@ class WebAudioPlayer {
   Future<void> load(String assetPath) async {
     if (kIsWeb) {
       try {
-        print('Loading web audio from: $assetPath');
         _audioContext = web.AudioContext();
         
         // Try multiple paths
@@ -32,17 +31,15 @@ class WebAudioPlayer {
 
         for (final path in paths) {
           try {
-            print('Trying to fetch audio from: $path');
             final fetchPromise = web.window.fetch(path.toJS);
-            response = await fetchPromise.toDart as web.Response;
+            response = await fetchPromise.toDart;
 
             if (response.ok) {
               workingPath = path;
-              print('Successfully fetched audio from: $path');
               break;
             }
           } catch (e) {
-            print('Failed to fetch from $path');
+            // Continue to next path
           }
         }
 
@@ -53,38 +50,31 @@ class WebAudioPlayer {
         final arrayBufferPromise = response.arrayBuffer();
         final arrayBuffer = await arrayBufferPromise.toDart;
 
-        final decodePromise = _audioContext!.decodeAudioData(arrayBuffer as JSArrayBuffer);
-        _audioBuffer = await decodePromise.toDart as web.AudioBuffer;
+        final decodePromise = _audioContext!.decodeAudioData(arrayBuffer);
+        _audioBuffer = await decodePromise.toDart;
         
         // Setup backup element
-        if (workingPath != null) {
-          _backupElement = web.HTMLAudioElement();
-          _backupElement!.src = workingPath;
-          _backupElement!.preload = 'auto';
-        }
+        _backupElement = web.HTMLAudioElement();
+        _backupElement!.src = workingPath;
+        _backupElement!.preload = 'auto';
         
-        print('Web audio decoded successfully');
       } catch (e) {
-        print('Error loading web audio: $e');
-        web.window.alert('Audio Load Error: $e');
-        rethrow;
+        // Silent fail in production
       }
     }
   }
 
-  Future<void> play() async {
+  Future<void> play({double volume = 1.0}) async {
     if (kIsWeb) {
       // Strategy 1: AudioContext (Primary)
       if (_audioContext != null && _audioBuffer != null) {
         try {
-          print('Playing web audio via AudioContext...');
-          
           if (_audioContext!.state == 'suspended') {
             await _audioContext!.resume().toDart;
           }
 
           final gainNode = _audioContext!.createGain();
-          gainNode.gain.value = 1.0;
+          gainNode.gain.value = volume;
           gainNode.connect(_audioContext!.destination);
 
           // Store in class member to prevent GC
@@ -93,9 +83,8 @@ class WebAudioPlayer {
           _activeSource!.connect(gainNode);
           
           _activeSource!.start(_audioContext!.currentTime + 0.01);
-          print('Context playback scheduled');
         } catch (e) {
-          print('Context play failed: $e');
+          // Ignore
         }
       }
       
@@ -103,19 +92,27 @@ class WebAudioPlayer {
       // This is often more reliable for simple "fire and forget" if Context fails
       if (_backupElement != null) {
         try {
-          print('Playing backup audio element...');
+          _backupElement!.volume = volume;
           _backupElement!.currentTime = 0;
           _backupElement!.play();
         } catch (e) {
-          print('Backup play failed: $e');
+          // Ignore
         }
       }
     }
   }
 
   void dispose() {
-    _audioContext?.close();
-    _audioContext = null;
-    _audioBuffer = null;
+    if (kIsWeb) {
+      try {
+        _activeSource?.stop();
+        _activeSource = null;
+        _audioContext?.close();
+        _audioContext = null;
+        _backupElement = null;
+      } catch (e) {
+        // Ignore errors during disposal
+      }
+    }
   }
 }

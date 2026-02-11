@@ -46,6 +46,7 @@ class Level {
   final int accentColor; // ARGB hex, e.g. 0xFF7C4DFF
   final String? imageUrl; // optional preview image
   final int? version; // optional sample data version for auto-refresh
+  final String? theory; // NEW: Theory content for the level
   // Completion flags for unlocking review
   final bool flashcardsCompleted;
   final bool imageChoiceCompleted;
@@ -61,6 +62,7 @@ class Level {
     required this.accentColor,
     this.imageUrl,
     this.version,
+    this.theory,
     this.flashcardsCompleted = false,
     this.imageChoiceCompleted = false,
     this.sentencesCompleted = false,
@@ -75,6 +77,7 @@ class Level {
       'accentColor': accentColor,
       'imageUrl': imageUrl,
       'version': version,
+      'theory': theory,
       'flashcardsCompleted': flashcardsCompleted,
       'imageChoiceCompleted': imageChoiceCompleted,
       'sentencesCompleted': sentencesCompleted,
@@ -89,6 +92,7 @@ class Level {
         accentColor: map['accentColor'] as int,
         imageUrl: map['imageUrl'] as String?,
         version: map['version'] as int?,
+        theory: map['theory'] as String?,
         flashcardsCompleted: (map['flashcardsCompleted'] as bool?) ?? false,
         imageChoiceCompleted: (map['imageChoiceCompleted'] as bool?) ?? false,
         sentencesCompleted: (map['sentencesCompleted'] as bool?) ?? false,

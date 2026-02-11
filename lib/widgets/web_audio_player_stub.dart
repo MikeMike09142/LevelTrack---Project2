@@ -3,7 +3,7 @@ class WebAudioPlayer {
     // No-op on mobile
   }
 
-  Future<void> play() async {
+  Future<void> play({double volume = 1.0}) async {
     // No-op on mobile
   }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:html' as html;
+import 'dart:js_interop';
+import 'package:web/web.dart' as web;
 import '../models/vocab.dart';
 
 class TtsService {
@@ -7,7 +8,7 @@ class TtsService {
   static final TtsService instance = TtsService._();
 
   Future<void> stop() async {
-    html.window.speechSynthesis?.cancel();
+    web.window.speechSynthesis.cancel();
   }
 
   Future<void> speakTextList(List<String> texts) async {
@@ -29,34 +30,34 @@ class TtsService {
   }
 
   String _buildSentence(VocabItem v) {
-    if ((v.sentenceAnswer ?? '').trim().isNotEmpty) {
-      return v.sentenceAnswer!;
+    if (v.sentenceAnswer.trim().isNotEmpty) {
+      return v.sentenceAnswer;
     }
-    if ((v.sentenceWithBlank ?? '').trim().isNotEmpty) {
-      return v.sentenceWithBlank!;
+    if (v.sentenceWithBlank.trim().isNotEmpty) {
+      return v.sentenceWithBlank;
     }
     final word = v.word.trim();
-    final tr = (v.translation ?? '').trim();
+    final tr = v.translation.trim();
     if (word.isEmpty && tr.isEmpty) return '';
     if (tr.isEmpty) return word;
     return '$word — $tr';
   }
 
   Future<void> _speakWeb(String text) async {
-    final synth = html.window.speechSynthesis;
-    if (synth == null) return;
-    final utter = html.SpeechSynthesisUtterance();
-    utter.text = text;
+    final synth = web.window.speechSynthesis;
+    final utter = web.SpeechSynthesisUtterance(text);
     utter.lang = 'en-US';
     utter.rate = 1.0;
     utter.pitch = 1.0;
+    
     final completer = Completer<void>();
-    utter.onEnd.listen((_) {
+    utter.onend = ((web.Event e) {
       if (!completer.isCompleted) completer.complete();
-    });
-    utter.onError.listen((_) {
+    }).toJS;
+    utter.onerror = ((web.Event e) {
       if (!completer.isCompleted) completer.complete();
-    });
+    }).toJS;
+    
     synth.speak(utter);
     await completer.future.timeout(const Duration(seconds: 10), onTimeout: () {});
   }
