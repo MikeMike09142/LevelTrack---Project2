@@ -11,11 +11,11 @@ class TtsService {
     web.window.speechSynthesis.cancel();
   }
 
-  Future<void> speakTextList(List<String> texts) async {
+  Future<void> speakTextList(List<String> texts, {double rate = 1.0}) async {
     for (final t in texts) {
       final text = t.trim();
       if (text.isEmpty) continue;
-      await _speakWeb(text);
+      await _speakWeb(text, rate: rate);
     }
   }
 
@@ -43,11 +43,11 @@ class TtsService {
     return '$word — $tr';
   }
 
-  Future<void> _speakWeb(String text) async {
+  Future<void> _speakWeb(String text, {double rate = 1.0}) async {
     final synth = web.window.speechSynthesis;
     final utter = web.SpeechSynthesisUtterance(text);
     utter.lang = 'en-US';
-    utter.rate = 1.0;
+    utter.rate = rate;
     utter.pitch = 1.0;
     
     final completer = Completer<void>();

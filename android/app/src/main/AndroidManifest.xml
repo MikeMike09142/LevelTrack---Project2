@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.leveltrack.app">
     <application
-        android:label="LevelTrack"
+        android:label="LevelUP English"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <meta-data

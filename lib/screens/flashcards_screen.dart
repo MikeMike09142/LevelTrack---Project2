@@ -44,7 +44,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
   void _markGood() => _advance(correct: true);
   void _markBad() => _advance(correct: false);
 
-  Future<void> _playAudioWithCooldown(String text) async {
+  Future<void> _playAudioWithCooldown(String text, {bool slow = false}) async {
     if (_isPlayingAudio) return; // Prevent multiple simultaneous audio plays
     
     setState(() {
@@ -52,7 +52,8 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
     });
     
     try {
-      await TtsService.instance.speakTextList([text]);
+      // Use 0.5 for slow speed, default (0.9/1.0) otherwise
+      await TtsService.instance.speakTextList([text], rate: slow ? 0.5 : 0.9);
     } finally {
       // Add a small cooldown to prevent rapid clicking
       await Future.delayed(const Duration(milliseconds: 500));
@@ -215,14 +216,22 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                                 style: Theme.of(context).textTheme.headlineMedium,
                               ),
                               const SizedBox(height: 12),
-                              IconButton(
-                                 icon: Icon(
-                                   Icons.volume_up,
-                                   size: 40,
-                                   color: _isPlayingAudio ? Colors.grey : Colors.blue,
-                                 ),
-                                 onPressed: _isPlayingAudio ? null : () => _playAudioWithCooldown(item.word),
-                               ),
+                              Tooltip(
+                                message: 'Mantén presionado para escuchar lento (0.5x)',
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(50),
+                                  onTap: _isPlayingAudio ? null : () => _playAudioWithCooldown(item.word),
+                                  onLongPress: _isPlayingAudio ? null : () => _playAudioWithCooldown(item.word, slow: true),
+                                  child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Icon(
+                                        Icons.volume_up,
+                                        size: 40,
+                                        color: _isPlayingAudio ? Colors.grey : Colors.blue,
+                                      ),
+                                    ),
+                                ),
+                              ),
                               const SizedBox(height: 12),
                               AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 200),

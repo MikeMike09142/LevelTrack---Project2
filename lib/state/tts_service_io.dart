@@ -26,8 +26,9 @@ class TtsService {
     } catch (_) {}
   }
 
-  Future<void> speakTextList(List<String> texts) async {
+  Future<void> speakTextList(List<String> texts, {double rate = 0.9}) async {
     await _ensureInit();
+    await _tts.setSpeechRate(rate);
     for (final t in texts) {
       final text = t.trim();
       if (text.isEmpty) continue;

@@ -53,7 +53,7 @@ class IntroTutorialDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       backgroundColor: const Color(0xFF1E293B),
       title: const Text(
-        '¡Bienvenido a LevelTrack!',
+        '¡Bienvenido a LevelUP English!',
         style: TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.bold,
