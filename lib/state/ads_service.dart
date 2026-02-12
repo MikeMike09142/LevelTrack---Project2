@@ -27,8 +27,8 @@ class AdsService {
       // Prefer production ID provided via --dart-define
       final prod = AdsConfig.rewardedAndroidId;
       if (prod != null && prod.isNotEmpty) return prod;
-      // Fallback to Google test ad unit for Rewarded
-      return 'ca-app-pub-3940256099942544/5224354917';
+      // Use Production Ad Unit ID by default
+      return 'ca-app-pub-4045532377926053/3911856005';
     }
     // iOS: prefer dart-define, otherwise test unit id
     final prodIos = AdsConfig.rewardedIosId;
