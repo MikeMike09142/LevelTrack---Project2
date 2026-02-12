@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/vocab.dart';
 import '../state/app_state.dart';
 import 'store_screen.dart';
@@ -200,10 +201,12 @@ class _LearningPathScreenState extends State<LearningPathScreen> with RouteAware
             child: const Text('CERRAR', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton.icon(
-            onPressed: () {
-              // In a real app, this would launch the store URL.
-              // For now, we just close the dialog as we don't have the package 'url_launcher' or a real ID.
+            onPressed: () async {
               Navigator.of(ctx).pop();
+              final Uri url = Uri.parse('https://play.google.com/store/apps/details?id=com.levelup.english');
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
             },
             icon: const Icon(Icons.star),
             label: const Text('IR A PLAY STORE'),

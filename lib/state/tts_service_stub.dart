@@ -6,7 +6,7 @@ class TtsService {
 
   Future<void> stop() async {}
 
-  Future<void> speakTextList(List<String> texts) async {}
+  Future<void> speakTextList(List<String> texts, {double rate = 0.9}) async {}
 
   Future<void> speakWordsOfLevel(Level level) async {}
 
